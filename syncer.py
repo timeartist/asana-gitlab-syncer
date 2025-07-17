@@ -3,7 +3,6 @@ from os import getenv
 from pprint import pp
 from typing import Optional, Tuple
 
-
 import requests
 
 ASANA_PAT = getenv("ASANA_PAT")
@@ -41,6 +40,16 @@ def add_comment_to_asana_task(task_gid: str, comment_body: str):
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
 
+# def update_asana_comment(story_gid: str, updated_text: str) -> dict:
+#     """Updates an existing comment (story) on an Asana task."""
+#     url = f"{ASANA_API_BASE_URL}/stories/{story_gid}"
+#     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
+#     payload = {"data": {"text": updated_text}}
+
+#     response = requests.put(url, headers=headers, json=payload)
+#     response.raise_for_status()
+#     return response.json().get('data')
+
 def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref: str, gitlab_field_gid: str) -> dict:
     """Creates a new subtask under a parent task and sets the GitLab custom field."""
     url = f"{ASANA_API_BASE_URL}/tasks/{parent_task_gid}/subtasks"
@@ -59,7 +68,7 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
     response.raise_for_status()
     return response.json().get('data')
 
-def get_asana_task_comments(task_gid: str) -> list:
+def get_asana_task_comments(task_gid: str) -> dict:
     """Fetches all comments (stories) for a given Asana task."""
     url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
@@ -67,7 +76,16 @@ def get_asana_task_comments(task_gid: str) -> list:
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     # Filter for actual user comments, not system-generated stories
-    return [story['text'] for story in response.json().get('data', []) if story.get('type') == 'comment']
+    comments = {}
+    for story in response.json().get('data', []):
+        if story.get('type') == 'comment':
+            text = story.get('text', '')
+            match = re.match(r'^Comment (\d+)', text)
+            if match:
+                comment_id = match.group(1)
+                comments[comment_id] = text
+
+    return comments
 
 def get_workspace_gid(workspace_name: str) -> str:
     """Finds the GID of a workspace by its name."""
@@ -158,14 +176,39 @@ def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid
 ## GITLAB ##
 ############
 
+def format_gitlab_comment_for_asana(issue_ref: str, comment: dict) -> str:
+    """Formats a GitLab comment for insertion into Asana."""
+    parsed_ref = parse_gitlab_issue_ref(issue_ref, url_encode=False)
+    if not parsed_ref:
+        print(f"ERROR: Could not parse GitLab issue reference: {issue_ref}")
+        raise ValueError(f"Invalid GitLab issue reference: {issue_ref}")
+    
+    project_path, issue_id = parsed_ref
+    comment_url = construct_gitlab_comment_url(project_path, issue_id, comment['id'])
+    comment_author = comment.get("author", {}).get("name", "Unknown User")
+    
+    print(f"    -> Adding comment {comment_url}")
+    
+    return f"Comment {comment['id']} From {comment_author} in GitLab:\n\n{comment.get('body')}\n\n{comment_url}"
 
-def parse_gitlab_issue_ref(issue_ref: str) -> Optional[Tuple[str, str]]:
+def construct_gitlab_comment_url(project_path: str, issue_id: str, comment_id: str) -> str:
+    """Constructs a URL for a specific comment on a GitLab issue."""
+    return f"{GITLAB_BASE_URL}/{project_path}/-/issues/{issue_id}#note_{comment_id}"
+
+
+def parse_gitlab_issue_ref(issue_ref: str, url_encode=True) -> Optional[Tuple[str, str]]:
     """Parses a GitLab reference like 'project/path#123' into parts."""
     match = re.match(r'([^#]+)#(\d+)', issue_ref)
     if match:
-        project_path = match.group(1).replace('/', '%2F')
         issue_id = match.group(2)
+        
+        if url_encode:
+            project_path = match.group(1).replace('/', '%2F')
+        else:
+            project_path = match.group(1)
+       
         return project_path, issue_id
+    
     return None
 
 def get_gitlab_issue_metadata(project_path: str, issue_id: str) -> dict:
@@ -175,6 +218,7 @@ def get_gitlab_issue_metadata(project_path: str, issue_id: str) -> dict:
 
     response = requests.get(url, headers=headers)
     response.raise_for_status()
+
     return response.json()
 
 def get_gitlab_issue_comments(project_path: str, issue_id: str) -> list:
@@ -185,6 +229,7 @@ def get_gitlab_issue_comments(project_path: str, issue_id: str) -> list:
 
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
+
     return response.json()
 
 if __name__ == "__main__":
@@ -202,7 +247,8 @@ if __name__ == "__main__":
     gitlab_field_gid = get_custom_field_gid(workspace_gid, ASANA_GITLAB_FIELD)
     found_tasks = find_tasks_with_populated_field(workspace_gid, gitlab_field_gid)
     gitlab_to_asana_map = transform_and_filter_asana_tasks_to_gitlab_map(found_tasks, gitlab_field_gid)
-    print(gitlab_to_asana_map)
+    print(f"Filtered to {len(gitlab_to_asana_map)} GitLab issue references in Asana tasks.")
+    # print(gitlab_to_asana_map)
         
     # Fetch data from GitLab
     all_gitlab_data = {}
@@ -210,77 +256,78 @@ if __name__ == "__main__":
         parsed_ref = parse_gitlab_issue_ref(issue_ref)
         if not parsed_ref: 
             continue
+        
         project_path, issue_id = parsed_ref
         print("project_path:", project_path, "issue_id:", issue_id)
+        
         try:
             metadata = get_gitlab_issue_metadata(project_path, issue_id)
             comments = get_gitlab_issue_comments(project_path, issue_id)
             all_gitlab_data[issue_ref] = {"metadata": metadata, "comments": comments}
             print(f"  -> Successfully fetched data for {issue_ref}")
             # pp(f"Metadata: {metadata}")
-            # pp(f"Comments: {comments}")
+            # pp(f"Comments: {comments}")  
         except requests.exceptions.HTTPError as e:
             print(f"  -> FAILED to fetch data for {issue_ref}. Status: {e.response.status_code}")
 
 
-        # Sync GitLab data to Asana subtasks
-        print("\n--- Syncing GitLab data to Asana subtasks ---")
-        for issue_ref, gitlab_data in all_gitlab_data.items():
-            asana_urls = gitlab_to_asana_map.get(issue_ref, [])
-            for asana_url in asana_urls:
-                parent_task_gid = asana_url.strip('/').split('/')[-1]
-                print(f"\nProcessing Asana task: {parent_task_gid} for GitLab issue: {issue_ref}")
+    # Sync GitLab data to Asana subtasks
+    print("\n--- Syncing GitLab data to Asana subtasks ---")
+    for issue_ref, gitlab_data in all_gitlab_data.items():
+        asana_urls = gitlab_to_asana_map.get(issue_ref, [])
+        for asana_url in asana_urls:
+            parent_task_gid = asana_url.strip('/').split('/')[-1]
+            print(f"\nProcessing Asana task: {parent_task_gid} for GitLab issue: {issue_ref}")
 
-                # Check for existing subtask
-                existing_subtasks = get_asana_subtasks(parent_task_gid)
-                print(f"  -> Found {len(existing_subtasks)} existing subtasks for parent task {parent_task_gid}.")
+            # Check for existing subtask
+            existing_subtasks = get_asana_subtasks(parent_task_gid)
+            print(f"  -> Found {len(existing_subtasks)} existing subtasks for parent task {parent_task_gid}.")
+            
+            target_subtask = None
+            for st in existing_subtasks:
+                for field in st.get('custom_fields', []):
+                    if field['gid'] == gitlab_field_gid:
+                        gitlab_issues_string = field['display_value']
+                        issue_refs = [ref.strip() for ref in gitlab_issues_string.split(',')]
+                        
+                        if issue_ref in issue_refs:
+                            target_subtask = st
+                            break
                 
-                target_subtask = None
-                for st in existing_subtasks:
-                    for field in st.get('custom_fields', []):
-                        if field['gid'] == gitlab_field_gid:
-                            gitlab_issues_string = field['display_value']
-                            issue_refs = [ref.strip() for ref in gitlab_issues_string.split(',')]
-                            
-                            if issue_ref in issue_refs:
-                                target_subtask = st
-                                break
-                    
-                    if target_subtask:
-                        break
-
                 if target_subtask:
-                    print(f"  -> Found existing subtask: {target_subtask['gid']}. Checking for new comments...")
-                    # UPDATE: Only add new comments
-                    existing_comments = get_asana_task_comments(target_subtask['gid'])
-                    new_gitlab_comments = [c for c in gitlab_data['comments'] if not c.get('system')]
-                    
-                    for comment in new_gitlab_comments:
-                        comment_author = comment.get("author", {}).get("name", "Unknown User")
-                        comment_body = f"From {comment_author} in GitLab:\n\n{comment.get('body')}"
-                        if comment_body not in existing_comments:
-                            print(f"    -> Adding new comment from {comment_author}")
-                            print(comment_body)
-                            add_comment_to_asana_task(target_subtask['gid'], comment_body)
+                    break
 
-                else:
-                    print(f"  -> No existing subtask found. Creating a new one...")
-                    # CREATE: Make new subtask and add all comments
-                    meta = gitlab_data['metadata']
-                    subtask_title = f"[GitLab Issue: {issue_ref}] {gitlab_data['metadata'].get('title')}"
-                    subtask_description = (
-                        f"This subtask is synced from GitLab.\n\n"
-                        f"GitLab URL: {meta.get('web_url')}\n"
-                        f"State: {meta.get('state')}\n"
-                        f"Author: {meta.get('author', {}).get('name')}"
-                    )
-                    new_subtask = create_asana_subtask(parent_task_gid, subtask_title, subtask_description, issue_ref, gitlab_field_gid)
-                    print(f"    -> Created new subtask: {new_subtask['gid']}")
+            if target_subtask:
+                print(f"  -> Found existing subtask: {target_subtask['gid']}. Checking for new comments...")
+                # UPDATE: Only add new comments
+                existing_comments = get_asana_task_comments(target_subtask['gid'])
+                new_gitlab_comments = [c for c in gitlab_data['comments'] if not c.get('system')]
+                
+                for comment in new_gitlab_comments:
+                    match = re.match(r"^Comment (\d+)", comment.get("body", ""))
+                    comment_id = match.group(1) if match else None
                     
-                    for comment in gitlab_data['comments']:
-                        if not comment.get('system'):
-                            comment_author = comment.get("author", {}).get("name", "Unknown User")
-                            comment_body = f"From {comment_author} in GitLab:\n\n{comment.get('body')}"
-                            print(f"    -> Adding comment from {comment_author}")
-                            print(comment_body)
-                            add_comment_to_asana_task(new_subtask['gid'], comment_body)
+                    ##TODO: add an else here that updates the existing comment to match if it is different
+                    if comment_id and not any(ec.startswith(comment_id) for ec in existing_comments):
+                        comment_body = format_gitlab_comment_for_asana(issue_ref, comment)
+                        add_comment_to_asana_task(target_subtask['gid'], comment_body)
+
+            else:
+                print(f"  -> No existing subtask found. Creating a new one...")
+                # CREATE: Make new subtask and add all comments
+                meta = gitlab_data['metadata']
+                subtask_title = f"[GitLab Issue: {issue_ref}] {gitlab_data['metadata'].get('title')}"
+                subtask_description = (
+                    f"This subtask is synced from GitLab.\n\n"
+                    f"GitLab URL: {meta.get('web_url')}\n"
+                    f"State: {meta.get('state')}\n"
+                    f"Author: {meta.get('author', {}).get('name')}"
+                )
+                new_subtask = create_asana_subtask(parent_task_gid, subtask_title, subtask_description, issue_ref, gitlab_field_gid)
+                print(f"    -> Created new subtask: {new_subtask['gid']}")
+                
+                for comment in gitlab_data['comments']:
+                    if not comment.get('system'):
+
+                        comment_body = format_gitlab_comment_for_asana(issue_ref, comment)
+                        add_comment_to_asana_task(new_subtask['gid'], comment_body)
