@@ -173,7 +173,7 @@ def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid
 
     return gitlab_to_asana_map
 
-def _find_gitlab_task_in_subtasks(subtasks: list, gitlab_issue_ref: str) -> Optional[dict]:
+def _find_gitlab_task_in_subtasks(subtasks: list, gitlab_issue_ref: str, gitlab_field_gid: str) -> Optional[dict]:
     for st in subtasks:
         for field in st.get('custom_fields', []):
             if field['gid'] == gitlab_field_gid:
@@ -266,10 +266,7 @@ def fetch_data_for_gitlab_issues(issue_refs) -> dict:
 
     return data
 
-if __name__ == "__main__":
-    
-    # ---------------------------------------------
-
+def main():
     # if not ASANA_PAT or not GITLAB_PAT:
     if not ASANA_PAT:
         print("ERROR: ASANA_PAT environment variable is not set.")
@@ -286,7 +283,6 @@ if __name__ == "__main__":
     # Fetch data from GitLab for the issues we found
     gitlab_data = fetch_data_for_gitlab_issues(gitlab_to_asana_map.keys())
 
-
     print("\n--- Syncing GitLab data to Asana subtasks ---")
     for issue_ref, gitlab_data in gitlab_data.items():
         ##take our parent issues, and find an existing generated gitlab if it exists
@@ -301,7 +297,7 @@ if __name__ == "__main__":
             existing_subtasks = get_asana_subtasks(parent_task_gid)
             print(f"  -> Found {len(existing_subtasks)} existing subtasks for parent task {parent_task_gid}.")
             
-            target_subtask = _find_gitlab_task_in_subtasks(existing_subtasks, issue_ref)
+            target_subtask = _find_gitlab_task_in_subtasks(existing_subtasks, issue_ref, gitlab_field_gid)
             if target_subtask:
                 
                 print(f"  -> Found existing subtask: {target_subtask['gid']}. Checking for new comments...")
@@ -338,3 +334,6 @@ if __name__ == "__main__":
                         print(f"      -> Adding comment {comment['id']} to new subtask {new_subtask['gid']}") 
                         comment_body = format_gitlab_comment_for_asana(issue_ref, comment)
                         add_comment_to_asana_task(new_subtask['gid'], comment_body)
+
+if __name__ == "__main__":
+    main()
