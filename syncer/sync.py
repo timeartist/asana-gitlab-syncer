@@ -1,6 +1,6 @@
 from typing import Optional
 
-from syncer.config import ASANA_PAT, ASANA_WORKSPACE_NAME, ASANA_GITLAB_FIELD
+from syncer.config import *
 from syncer.api import gitlab as GL, asana as A
 
 def _find_gitlab_task_in_subtasks(subtasks: list, gitlab_issue_ref: str, gitlab_field_gid: str) -> Optional[dict]:
@@ -75,19 +75,44 @@ def sync_gitlab_to_asana(gitlab_data: dict, gitlab_to_asana_map: dict, gitlab_fi
                 print(f"  -> No existing subtask found. Creating a new one...")
                 _create_new_subtask(issue_data, parent_task_gid, gitlab_field_gid)
 
+def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid: str) -> dict:
+    """Transforms Asana tasks into a map of GitLab issue references to Asana task URLs."""
+    gitlab_to_asana_map = {}
+
+    ## this looks a lot worse than it is, the custom field array is always relatively small, as should be the number of gitlab issues
+    for task in tasks:
+        print(f"Processing Asana task: {task['gid']} | {task['name']}")
+        if not task['name'].startswith('[GitLab Issue'):
+            for field in task.get('custom_fields', []):
+                if field['gid'] == gitlab_field_gid and field.get('display_value'):
+                    gitlab_issues_string = field['display_value']
+                    for issue_ref in gitlab_issues_string.split(','):
+                        clean_issue_ref = issue_ref.strip()
+                        if clean_issue_ref:
+                            if clean_issue_ref not in gitlab_to_asana_map:
+                                gitlab_to_asana_map[clean_issue_ref] = []
+                            gitlab_to_asana_map[clean_issue_ref].append(task['permalink_url'])
+                    break
+
+    return gitlab_to_asana_map
+
 
 def main():
-    # if not ASANA_PAT or not GITLAB_PAT:
-    if not ASANA_PAT:
-        print("ERROR: ASANA_PAT environment variable is not set.")
-        exit(1)
-        # print("ERROR: ASANA_PAT and/or GITLAB_PAT environment variables are not set.")
-
-    # Find Asana tasks and build the initial map
+    # print(f'ASANA_WORKSPACE_NAME: {ASANA_WORKSPACE_NAME}')
+    # print(f'ASANA_GITLAB_FIELD: {ASANA_GITLAB_FIELD}')
+    # print(f'ASANA_PAT: {ASANA_PAT}')
+    # print(f'ASANA_API_BASE_URL: {ASANA_API_BASE_URL}')
+    # print(f'GITLAB_PAT: {GITLAB_PAT}')
+    # print(f'GITLAB_BASE_URL: {GITLAB_BASE_URL}')
+    # print(f'GITLAB_API_BASE_URL: {GITLAB_API_BASE_URL}')
+    
+    # Find relevant Asana tasks
     workspace_gid = A.get_workspace_gid(ASANA_WORKSPACE_NAME)
     gitlab_field_gid = A.get_custom_field_gid(workspace_gid, ASANA_GITLAB_FIELD)
     found_tasks = A.find_tasks_with_populated_field(workspace_gid, gitlab_field_gid)
-    gitlab_to_asana_map = A.transform_and_filter_asana_tasks_to_gitlab_map(found_tasks, gitlab_field_gid)
+    
+    ## map to gitlab issues
+    gitlab_to_asana_map = transform_and_filter_asana_tasks_to_gitlab_map(found_tasks, gitlab_field_gid)
     print(f"Filtered to {len(gitlab_to_asana_map)} GitLab issue references in Asana tasks.")
         
     # Fetch data from GitLab for the issues we found

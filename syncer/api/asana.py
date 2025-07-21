@@ -12,7 +12,6 @@ def get_asana_subtasks(parent_task_gid: str) -> list:
 
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
-    # pp(response.json())
 
     return response.json().get('data', [])
 
@@ -39,15 +38,13 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
     """Creates a new subtask under a parent task and sets the GitLab custom field."""
     url = f"{ASANA_API_BASE_URL}/tasks/{parent_task_gid}/subtasks"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
-    payload = {
-        "data": {
-            "name": name,
-            "notes": notes,
-            "custom_fields": {
-                gitlab_field_gid: gitlab_ref
-            }
-        }
-    }
+    payload = {"data": {"name": name,
+                        "notes": notes,
+                        "custom_fields": {
+                            gitlab_field_gid: gitlab_ref
+                            }
+                        }
+                    }
 
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
@@ -136,24 +133,3 @@ def find_tasks_with_populated_field(workspace_gid: str, custom_field_gid: str) -
     
     print(f"Asana search complete. Found {len(all_tasks)} total open tasks.")
     return all_tasks
-
-def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid: str) -> dict:
-    """Transforms Asana tasks into a map of GitLab issue references to Asana task URLs."""
-    gitlab_to_asana_map = {}
-
-    ## this looks a lot worse than it is, the custom field array is always relatively small, as should be the number of gitlab issues
-    for task in tasks:
-        print(f"Processing Asana task: {task['gid']} | {task['name']}")
-        if not task['name'].startswith('[GitLab Issue'):
-            for field in task.get('custom_fields', []):
-                if field['gid'] == gitlab_field_gid and field.get('display_value'):
-                    gitlab_issues_string = field['display_value']
-                    for issue_ref in gitlab_issues_string.split(','):
-                        clean_issue_ref = issue_ref.strip()
-                        if clean_issue_ref:
-                            if clean_issue_ref not in gitlab_to_asana_map:
-                                gitlab_to_asana_map[clean_issue_ref] = []
-                            gitlab_to_asana_map[clean_issue_ref].append(task['permalink_url'])
-                    break
-
-    return gitlab_to_asana_map
