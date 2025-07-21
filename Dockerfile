@@ -9,7 +9,7 @@ ENV INSTALL_DIR=/opt/demo
 WORKDIR ${INSTALL_DIR}
 COPY pyproject.toml .
 
-RUN poetry install 
+RUN poetry install --no-root
 
 # Development workaround - make sure we don't override poetry.lock inside the container with one we're copying from local
 RUN mv poetry.lock poetry.lock.bak
@@ -20,3 +20,5 @@ RUN mv poetry.lock.bak poetry.lock
 RUN poetry install 
 
 ENV PYTHONUNBUFFERED=1
+
+CMD ["poetry", "run","sync-asana-gitlab"]
