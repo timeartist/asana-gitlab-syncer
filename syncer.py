@@ -243,6 +243,29 @@ def get_gitlab_issue_comments(project_path: str, issue_id: str) -> list:
 
     return response.json()
 
+def fetch_data_for_gitlab_issues(issue_refs) -> dict:
+    """Fetches metadata and comments for a list of GitLab issue references."""
+    data = {}
+    for issue_ref in issue_refs:
+        parsed_ref = parse_gitlab_issue_ref(issue_ref)
+        if not parsed_ref: 
+            continue
+        
+        project_path, issue_id = parsed_ref
+        print("project_path:", project_path, "issue_id:", issue_id)
+        
+        try:
+            metadata = get_gitlab_issue_metadata(project_path, issue_id)
+            comments = get_gitlab_issue_comments(project_path, issue_id)
+            data[issue_ref] = {"metadata": metadata, "comments": comments}
+            print(f"  -> Successfully fetched data for {issue_ref}")
+            # pp(f"Metadata: {metadata}")
+            # pp(f"Comments: {comments}")  
+        except requests.exceptions.HTTPError as e:
+            print(f"  -> FAILED to fetch data for {issue_ref}. Status: {e.response.status_code}")
+
+    return data
+
 if __name__ == "__main__":
     
     # ---------------------------------------------
@@ -260,28 +283,12 @@ if __name__ == "__main__":
     gitlab_to_asana_map = transform_and_filter_asana_tasks_to_gitlab_map(found_tasks, gitlab_field_gid)
     print(f"Filtered to {len(gitlab_to_asana_map)} GitLab issue references in Asana tasks.")
         
-    # Fetch data from GitLab
-    all_gitlab_data = {}
-    for issue_ref in gitlab_to_asana_map.keys():
-        parsed_ref = parse_gitlab_issue_ref(issue_ref)
-        if not parsed_ref: 
-            continue
-        
-        project_path, issue_id = parsed_ref
-        print("project_path:", project_path, "issue_id:", issue_id)
-        
-        try:
-            metadata = get_gitlab_issue_metadata(project_path, issue_id)
-            comments = get_gitlab_issue_comments(project_path, issue_id)
-            all_gitlab_data[issue_ref] = {"metadata": metadata, "comments": comments}
-            print(f"  -> Successfully fetched data for {issue_ref}")
-            # pp(f"Metadata: {metadata}")
-            # pp(f"Comments: {comments}")  
-        except requests.exceptions.HTTPError as e:
-            print(f"  -> FAILED to fetch data for {issue_ref}. Status: {e.response.status_code}")
+    # Fetch data from GitLab for the issues we found
+    gitlab_data = fetch_data_for_gitlab_issues(gitlab_to_asana_map.keys())
+
 
     print("\n--- Syncing GitLab data to Asana subtasks ---")
-    for issue_ref, gitlab_data in all_gitlab_data.items():
+    for issue_ref, gitlab_data in gitlab_data.items():
         ##take our parent issues, and find an existing generated gitlab if it exists
         ##if it does, add/update comments for it
         ##if it doesn't, create a new subtask with all comments
@@ -321,7 +328,6 @@ if __name__ == "__main__":
                 subtask_description = (
                     f"This subtask is synced from GitLab.\n\n"
                     f"GitLab URL: {meta.get('web_url')}\n"
-                    f"State: {meta.get('state')}\n"
                     f"Author: {meta.get('author', {}).get('name')}"
                 )
                 new_subtask = create_asana_subtask(parent_task_gid, subtask_title, subtask_description, issue_ref, gitlab_field_gid)
