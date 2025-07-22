@@ -19,7 +19,7 @@ def add_comment_to_asana_task(task_gid: str, comment_body: str):
     """Adds a new comment (story) to an Asana task."""
     url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
-    payload = {"data": {"text": comment_body}}
+    payload = {"data": {"html_text": comment_body}}
 
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
@@ -28,7 +28,7 @@ def update_asana_comment(story_gid: str, updated_text: str) -> dict:
     """Updates an existing comment (story) on an Asana task."""
     url = f"{ASANA_API_BASE_URL}/stories/{story_gid}"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
-    payload = {"data": {"text": updated_text}}
+    payload = {"data": {"html_text": updated_text}}
 
     response = requests.put(url, headers=headers, json=payload)
     response.raise_for_status()
@@ -52,7 +52,7 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
 
 def get_asana_existing_gitlab_comments(task_gid: str) -> dict:
     """Fetches all comments (stories) for a given Asana task."""
-    url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories"
+    url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories?opt_fields=html_text,type"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
 
     response = requests.get(url, headers=headers)
@@ -60,10 +60,9 @@ def get_asana_existing_gitlab_comments(task_gid: str) -> dict:
     # Filter for comments that we made, which start with "Comment <id>"
     comments = {}
     for story in response.json().get('data', []):
-
         if story.get('type') == 'comment':
-            text = story.get('text', '')
-            match = re.match(r'^Comment (\d+)', text)
+            text = story['html_text']
+            match = re.search(r'\[Comment (\d+)\]', text)
             if match:
                 comment_id = match.group(1)
                 comments[int(comment_id)] = {'gid': story['gid'], 'text': text}

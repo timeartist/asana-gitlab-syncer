@@ -5,19 +5,6 @@ import requests
 
 from syncer.config import GITLAB_PAT, GITLAB_BASE_URL, GITLAB_API_BASE_URL
 
-def format_gitlab_comment_for_asana(issue_ref: str, comment: dict) -> str:
-    """Formats a GitLab comment for insertion into Asana."""
-    parsed_ref = parse_gitlab_issue_ref(issue_ref, url_encode=False)
-    if not parsed_ref:
-        print(f"ERROR: Could not parse GitLab issue reference: {issue_ref}")
-        raise ValueError(f"Invalid GitLab issue reference: {issue_ref}")
-    
-    project_path, issue_id = parsed_ref
-    comment_url = construct_gitlab_comment_url(project_path, issue_id, comment['id'])
-    comment_author = comment.get("author", {}).get("name", "Unknown User")
-    
-    return f"Comment {comment['id']} From {comment_author} in GitLab:\n\n{comment.get('body')}\n\n{comment_url}"
-
 def construct_gitlab_comment_url(project_path: str, issue_id: str, comment_id: str) -> str:
     """Constructs a URL for a specific comment on a GitLab issue."""
     return f"{GITLAB_BASE_URL}/{project_path}/-/issues/{issue_id}#note_{comment_id}"

@@ -2,6 +2,28 @@ from typing import Optional
 
 from syncer.config import *
 from syncer.api import gitlab as GL, asana as A
+from datetime import datetime
+
+def __format_gitlab_comment_for_asana(issue_ref: str, comment: dict) -> str:
+    """Formats a GitLab comment for insertion into Asana."""
+    parsed_ref = GL.parse_gitlab_issue_ref(issue_ref, url_encode=False)
+    if not parsed_ref:
+        print(f"ERROR: Could not parse GitLab issue reference: {issue_ref}")
+        raise ValueError(f"Invalid GitLab issue reference: {issue_ref}")
+    
+    project_path, issue_id = parsed_ref
+    comment_url = GL.construct_gitlab_comment_url(project_path, issue_id, comment['id'])
+    comment_author = comment.get("author", {}).get("name", "Unknown User")
+    # Format the timestamp to be human-readable with timezone
+    
+    if comment.get("updated_at"):
+        try:
+            dt = datetime.fromisoformat(comment["updated_at"])
+            comment_timestamp = dt.astimezone().strftime('%a, %b %d, %Y at %-I:%M %p %Z')
+        except (ValueError, TypeError):
+            comment_timestamp = "Unknown Time"
+
+    return f'<body><a href="{comment_url}">[Comment {comment['id']}] From {comment_author} in GitLab on {comment_timestamp}:</a>\n\n<pre>{comment.get('body')}</pre></body>'
 
 def _find_gitlab_task_in_subtasks(subtasks: list, gitlab_issue_ref: str, gitlab_field_gid: str) -> Optional[dict]:
     for st in subtasks:
@@ -21,7 +43,7 @@ def _update_existing_subtask(asana_subtask: dict, gitlab_issue: dict):
     gitlab_comments = dict((c['id'], c) for c in gitlab_issue['comments'] if not c.get('system'))
 
     for comment_id, comment in gitlab_comments.items():
-        comment_body = GL.format_gitlab_comment_for_asana(gitlab_issue['metadata']['references']['full'], comment)
+        comment_body = __format_gitlab_comment_for_asana(gitlab_issue['metadata']['references']['full'], comment)
         if not asana_comments.get(comment_id):
             print(f"    -> Adding new comment {comment_id} to subtask {asana_subtask['gid']}")
             A.add_comment_to_asana_task(asana_subtask['gid'], comment_body)
@@ -48,7 +70,7 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
         for comment in gitlab_issue['comments']:
             if not comment.get('system'):
                 print(f"      -> Adding comment {comment['id']} to new subtask {new_subtask['gid']}") 
-                comment_body = GL.format_gitlab_comment_for_asana(issue_ref, comment)
+                comment_body = __format_gitlab_comment_for_asana(issue_ref, comment)
                 A.add_comment_to_asana_task(new_subtask['gid'], comment_body)
 
 
