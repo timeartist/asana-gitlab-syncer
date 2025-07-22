@@ -31,7 +31,7 @@ def _find_gitlab_task_in_subtasks(subtasks: list, gitlab_issue_ref: str, gitlab_
             if field['gid'] == gitlab_field_gid:
                 gitlab_issues_string = field['display_value']
                 issue_refs = [ref.strip() for ref in gitlab_issues_string.split(',')]
-                
+
                 if gitlab_issue_ref in issue_refs:
                     return st
 
@@ -41,7 +41,6 @@ def _update_existing_subtask(asana_subtask: dict, gitlab_issue: dict):
     print(f"  -> Found existing subtask: {asana_subtask['gid']}. Checking for new comments...")
     asana_comments = A.get_asana_existing_gitlab_comments(asana_subtask['gid'])
     gitlab_comments = dict((c['id'], c) for c in gitlab_issue['comments'] if not c.get('system'))
-
     for comment_id, comment in gitlab_comments.items():
         comment_body = __format_gitlab_comment_for_asana(gitlab_issue['metadata']['references']['full'], comment)
         if not asana_comments.get(comment_id):
@@ -72,6 +71,8 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
                 print(f"      -> Adding comment {comment['id']} to new subtask {new_subtask['gid']}") 
                 comment_body = __format_gitlab_comment_for_asana(issue_ref, comment)
                 A.add_comment_to_asana_task(new_subtask['gid'], comment_body)
+        
+        return new_subtask
 
 
 def sync_gitlab_to_asana(gitlab_data: dict, gitlab_to_asana_map: dict, gitlab_field_gid: str):
@@ -89,13 +90,23 @@ def sync_gitlab_to_asana(gitlab_data: dict, gitlab_to_asana_map: dict, gitlab_fi
             print(f"  -> Found {len(existing_subtasks)} existing subtasks for parent task {parent_task_gid}.")
             
             target_subtask = _find_gitlab_task_in_subtasks(existing_subtasks, issue_ref, gitlab_field_gid)
-
             if target_subtask:
                 _update_existing_subtask(target_subtask, issue_data)
-
             else:
                 print(f"  -> No existing subtask found. Creating a new one...")
-                _create_new_subtask(issue_data, parent_task_gid, gitlab_field_gid)
+                target_subtask = _create_new_subtask(issue_data, parent_task_gid, gitlab_field_gid)
+            # Check if GitLab issue is closed but Asana subtask is open
+        
+            gitlab_closed = issue_data['metadata']['state'] == 'closed'
+            asana_completed = target_subtask['completed']
+            print(f"  -> GitLab issue is {'closed' if gitlab_closed else 'open'}, Asana subtask is {'completed' if asana_completed else 'open'}.")
+            
+            if gitlab_closed and not asana_completed:
+                print(f"    -> GitLab issue is closed, but Asana subtask is open. Closing Asana subtask {target_subtask['gid']}...")
+                A.update_task_status(target_subtask['gid'], True)
+            elif not gitlab_closed and asana_completed:
+                print(f"    -> GitLab issue is open, but Asana subtask is completed. Reopening Asana subtask {target_subtask['gid']}...")
+                A.update_task_status(target_subtask['gid'], False)
 
 def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid: str) -> dict:
     """Transforms Asana tasks into a map of GitLab issue references to Asana task URLs."""

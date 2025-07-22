@@ -8,7 +8,7 @@ def get_asana_subtasks(parent_task_gid: str) -> list:
     """Fetches all subtasks for a given parent Asana task."""
     url = f"{ASANA_API_BASE_URL}/tasks/{parent_task_gid}/subtasks"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
-    params = {"opt_fields": "name,notes,custom_fields"}
+    params = {"opt_fields": "name,notes,custom_fields,completed"}
 
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
@@ -34,6 +34,16 @@ def update_asana_comment(story_gid: str, updated_text: str) -> dict:
     response.raise_for_status()
     return response.json().get('data')
 
+def update_task_status(task_gid: str, completed: bool) -> dict:
+    """Updates an Asana task's completion status."""
+    url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}"
+    headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
+    payload = {"data": {"completed": completed}}
+    
+    response = requests.put(url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json().get('data')
+
 def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref: str, gitlab_field_gid: str) -> dict:
     """Creates a new subtask under a parent task and sets the GitLab custom field."""
     url = f"{ASANA_API_BASE_URL}/tasks/{parent_task_gid}/subtasks"
@@ -52,10 +62,11 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
 
 def get_asana_existing_gitlab_comments(task_gid: str) -> dict:
     """Fetches all comments (stories) for a given Asana task."""
-    url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories?opt_fields=html_text,type"
+    url = f"{ASANA_API_BASE_URL}/tasks/{task_gid}/stories"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
+    params = {"opt_fields": "html_text,type"}
 
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
     # Filter for comments that we made, which start with "Comment <id>"
     comments = {}
