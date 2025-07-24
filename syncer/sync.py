@@ -1,8 +1,18 @@
+from datetime import datetime
 from typing import Optional
 
 from syncer.config import *
 from syncer.api import gitlab as GL, asana as A
-from datetime import datetime
+
+def __format_gitlab_timestamp(timestamp: str) -> str:
+    '''Format the timestamp to be human-readable with timezone'''
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        comment_timestamp = dt.astimezone().strftime('%a, %b %d, %Y at %-I:%M %p %Z')
+    except (ValueError, TypeError):
+        comment_timestamp = "Unknown Time"
+    
+    return comment_timestamp
 
 def __format_gitlab_comment_for_asana(issue_ref: str, comment: dict) -> str:
     """Formats a GitLab comment for insertion into Asana."""
@@ -14,14 +24,9 @@ def __format_gitlab_comment_for_asana(issue_ref: str, comment: dict) -> str:
     project_path, issue_id = parsed_ref
     comment_url = GL.construct_gitlab_comment_url(project_path, issue_id, comment['id'])
     comment_author = comment.get("author", {}).get("name", "Unknown User")
-    # Format the timestamp to be human-readable with timezone
-    
+
     if comment.get("updated_at"):
-        try:
-            dt = datetime.fromisoformat(comment["updated_at"])
-            comment_timestamp = dt.astimezone().strftime('%a, %b %d, %Y at %-I:%M %p %Z')
-        except (ValueError, TypeError):
-            comment_timestamp = "Unknown Time"
+        comment_timestamp = __format_gitlab_timestamp(comment["updated_at"])
 
     return f'<body><a href="{comment_url}">[Comment {comment['id']}] From {comment_author} in GitLab on {comment_timestamp}:</a>\n\n<pre>{comment.get('body')}</pre></body>'
 
@@ -58,10 +63,16 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
         meta = gitlab_issue['metadata']
         issue_ref = meta['references']['full']
         subtask_title = f"[GitLab Issue: {issue_ref}] {gitlab_issue['metadata'].get('title')}"
+        # from pprint import pp; pp(meta)
+        # import pdb; pdb.set_trace()
         subtask_description = (
-            f"This subtask is synced from GitLab.\n\n"
-            f"GitLab URL: {meta.get('web_url')}\n"
-            f"Author: {meta.get('author', {}).get('name')}"
+            "<body>"
+            f"This subtask is synced from GitLab.\n<b><u>Do not make changes in Asana, they will be overwritten</u></b>\n\n<hr>\n"
+            f"<b>GitLab URL:</b><a href=\"{meta.get('web_url')}\">{meta.get('web_url')}</a>\n"
+            f"<b>Author:</b> {meta.get('author', {}).get('name')}\n"
+            f"<b>Created at:</b> {__format_gitlab_timestamp(meta.get('created_at'))}\n"
+            f"<b>Description:</b>\n<pre>{meta.get('description', 'No description provided')}</pre>"
+            "</body>"
         )
         new_subtask = A.create_asana_subtask(parent_task_gid, subtask_title, subtask_description, issue_ref, gitlab_field_gid)
         print(f"    -> Created new subtask: {new_subtask['gid']}")

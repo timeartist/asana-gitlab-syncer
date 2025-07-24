@@ -8,3 +8,5 @@ ASANA_API_BASE_URL = "https://app.asana.com/api/1.0"
 GITLAB_PAT = getenv("GITLAB_PAT")
 GITLAB_BASE_URL = getenv("GITLAB_BASE_URL") or 'https://gitlab.com'
 GITLAB_API_BASE_URL = f"{GITLAB_BASE_URL}/api/v4"
+
+COMMENT_REGEX = r'\[Comment (\d+)\]'

@@ -2,7 +2,7 @@ import re
 
 import requests
 
-from syncer.config import ASANA_PAT, ASANA_API_BASE_URL
+from syncer.config import ASANA_PAT, ASANA_API_BASE_URL, COMMENT_REGEX
 
 def get_asana_subtasks(parent_task_gid: str) -> list:
     """Fetches all subtasks for a given parent Asana task."""
@@ -49,7 +49,7 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
     url = f"{ASANA_API_BASE_URL}/tasks/{parent_task_gid}/subtasks"
     headers = {"Authorization": f"Bearer {ASANA_PAT}", "Accept": "application/json"}
     payload = {"data": {"name": name,
-                        "notes": notes,
+                        "html_notes": notes,
                         "custom_fields": {
                             gitlab_field_gid: gitlab_ref
                             }
@@ -68,12 +68,13 @@ def get_asana_existing_gitlab_comments(task_gid: str) -> dict:
 
     response = requests.get(url, headers=headers, params=params)
     response.raise_for_status()
-    # Filter for comments that we made, which start with "Comment <id>"
+    
+    # Filter for comments that we made, which look like "[Comment <id>]"
     comments = {}
     for story in response.json().get('data', []):
         if story.get('type') == 'comment':
             text = story['html_text']
-            match = re.search(r'\[Comment (\d+)\]', text)
+            match = re.search(COMMENT_REGEX, text)
             if match:
                 comment_id = match.group(1)
                 comments[int(comment_id)] = {'gid': story['gid'], 'text': text}
