@@ -4,20 +4,16 @@ resources:
     source:
       uri: https://github.com/timeartist/asana-gitlab-syncer
       branch: main
-
   - name: interval-trigger
     type: time
     source:
       interval: 15m
-
 jobs:
   - name: sync-asana-gitlab
     plan:
       - get: interval-trigger
         trigger: true
-      
       - get: repo
-      
       - task: run-sync
         config:
           platform: linux
@@ -33,7 +29,35 @@ jobs:
             GITLAB_PAT: ((gitlab_pat))
             ASANA_WORKSPACE_NAME: ((asana_workspace_name))
             GITLAB_BASE_URL: ((gitlab_base_url))
-            # Add any other environment variables your sync needs
+          run:
+            dir: repo
+            path: /bin/bash
+            args:
+              - -ec
+              - |
+                pip install poetry
+                poetry install
+                poetry run sync-asana-gitlab
+  - name: sync-external-asana-gitlab
+    plan:
+      - get: interval-trigger
+        trigger: true
+      - get: repo
+      - task: run-sync
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: python
+              tag: '3.12'
+          inputs:
+            - name: repo
+          params:
+            ASANA_PAT: ((asana_pat))
+            GITLAB_PAT: ((external_gitlab_pat))
+            ASANA_WORKSPACE_NAME: ((asana_workspace_name))
+            ASANA_GITLAB_FIELD: "External Gitlab Issues"
           run:
             dir: repo
             path: /bin/bash
