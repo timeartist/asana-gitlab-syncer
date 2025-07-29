@@ -32,6 +32,7 @@ def update_asana_comment(story_gid: str, updated_text: str) -> dict:
 
     response = requests.put(url, headers=headers, json=payload)
     response.raise_for_status()
+
     return response.json().get('data')
 
 def update_task_status(task_gid: str, completed: bool) -> dict:
@@ -42,6 +43,7 @@ def update_task_status(task_gid: str, completed: bool) -> dict:
     
     response = requests.put(url, headers=headers, json=payload)
     response.raise_for_status()
+
     return response.json().get('data')
 
 def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref: str, gitlab_field_gid: str) -> dict:
@@ -58,6 +60,7 @@ def create_asana_subtask(parent_task_gid: str, name: str, notes: str, gitlab_ref
 
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
+    
     return response.json().get('data')
 
 def get_asana_existing_gitlab_comments(task_gid: str) -> dict:

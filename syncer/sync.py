@@ -63,8 +63,6 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
         meta = gitlab_issue['metadata']
         issue_ref = meta['references']['full']
         subtask_title = f"[GitLab Issue: {issue_ref}] {gitlab_issue['metadata'].get('title')}"
-        # from pprint import pp; pp(meta)
-        # import pdb; pdb.set_trace()
         subtask_description = (
             "<body>"
             f"This subtask is synced from GitLab.\n<b><u>Do not make changes in Asana, they will be overwritten</u></b>\n\n<hr>\n"
@@ -74,6 +72,7 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
             f"<b>Description:</b>\n<pre>{meta.get('description', 'No description provided')}</pre>"
             "</body>"
         )
+        
         new_subtask = A.create_asana_subtask(parent_task_gid, subtask_title, subtask_description, issue_ref, gitlab_field_gid)
         print(f"    -> Created new subtask: {new_subtask['gid']}")
         
@@ -84,7 +83,6 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
                 A.add_comment_to_asana_task(new_subtask['gid'], comment_body)
         
         return new_subtask
-
 
 def sync_gitlab_to_asana(gitlab_data: dict, gitlab_to_asana_map: dict, gitlab_field_gid: str):
     for issue_ref, issue_data in gitlab_data.items():
@@ -106,8 +104,8 @@ def sync_gitlab_to_asana(gitlab_data: dict, gitlab_to_asana_map: dict, gitlab_fi
             else:
                 print(f"  -> No existing subtask found. Creating a new one...")
                 target_subtask = _create_new_subtask(issue_data, parent_task_gid, gitlab_field_gid)
+            
             # Check if GitLab issue is closed but Asana subtask is open
-        
             gitlab_closed = issue_data['metadata']['state'] == 'closed'
             asana_completed = target_subtask['completed']
             print(f"  -> GitLab issue is {'closed' if gitlab_closed else 'open'}, Asana subtask is {'completed' if asana_completed else 'open'}.")
@@ -139,7 +137,6 @@ def transform_and_filter_asana_tasks_to_gitlab_map(tasks: list, gitlab_field_gid
                     break
 
     return gitlab_to_asana_map
-
 
 def main():
     # print(f'ASANA_WORKSPACE_NAME: {ASANA_WORKSPACE_NAME}')

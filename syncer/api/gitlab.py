@@ -9,7 +9,6 @@ def construct_gitlab_comment_url(project_path: str, issue_id: str, comment_id: s
     """Constructs a URL for a specific comment on a GitLab issue."""
     return f"{GITLAB_BASE_URL}/{project_path}/-/issues/{issue_id}#note_{comment_id}"
 
-
 def parse_gitlab_issue_ref(issue_ref: str, url_encode=True) -> Optional[Tuple[str, str]]:
     """Parses a GitLab reference like 'project/path#123' into parts."""
     match = re.match(r'([^#]+)#(\d+)', issue_ref)
