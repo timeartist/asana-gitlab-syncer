@@ -66,7 +66,7 @@ def _create_new_subtask(gitlab_issue:dict, parent_task_gid: str, gitlab_field_gi
         subtask_description = (
             "<body>"
             f"This subtask is synced from GitLab.\n<b><u>Do not make changes in Asana, they will be overwritten</u></b>\n\n<hr>\n"
-            f"<b>GitLab URL: </b><a href=\"{meta.get('web_url')}\">{meta.get('web_url')}</a>\n"
+            f"<b>GitLab URL:</b>&nbsp;<a href=\"{meta.get('web_url')}\">{meta.get('web_url')}</a>\n"
             f"<b>Author:</b> {meta.get('author', {}).get('name')}\n"
             f"<b>Created at:</b> {__format_gitlab_timestamp(meta.get('created_at'))}\n"
             f"<b>Description:</b>\n<pre>{meta.get('description', 'No description provided')}</pre>"
