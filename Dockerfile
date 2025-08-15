@@ -2,7 +2,7 @@ FROM python:3
 
 RUN curl -sSL https://install.python-poetry.org |  POETRY_HOME=/usr/local python3 -
 
-ENV INSTALL_DIR=/opt/demo
+ENV INSTALL_DIR=/opt/syncer
 WORKDIR ${INSTALL_DIR}
 COPY pyproject.toml .
 
